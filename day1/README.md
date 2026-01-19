@@ -440,7 +440,7 @@ groq_client = OpenAI(
 
 ```python
 response = groq_client.responses.create(
-    model='openai/gpt-oss-20b',
+    model='llama-3.3-70b-versatile',
     input=[
         {"role": "system", "content": "You're a helpful assistant."},
         {"role": "user", "content": "Tell me a joke about programming"}
@@ -567,7 +567,7 @@ class JokeResponse(BaseModel):
     category: Literal["programming", "general", "dad"]
 ```
 
-With `.create()` - requires `transform_schema()`:
+With `.create()` - returns JSON text that needs parsing:
 
 ```python
 response = anthropic_client.beta.messages.create(
@@ -577,7 +577,7 @@ response = anthropic_client.beta.messages.create(
     messages=[
         {
             "role": "user",
-            "content": "Tell me a programming joke about bugs."
+            "content": "Tell me a programming joke about bugs in JSON format."
         }
     ],
     output_format={
@@ -586,7 +586,16 @@ response = anthropic_client.beta.messages.create(
     }
 )
 
-print(response.content[0].text)
+# Returns JSON text - may be wrapped in markdown code blocks
+import json
+import re
+
+json_text = response.content[0].text
+# Remove markdown code blocks if present
+json_text = re.sub(r'```json\s*', '', json_text)
+json_text = re.sub(r'```\s*', '', json_text)
+joke_data = json.loads(json_text)
+print(joke_data)
 ```
 
 With `.parse()` - can pass Pydantic model directly:
@@ -599,7 +608,7 @@ response = anthropic_client.beta.messages.parse(
     messages=[
         {
             "role": "user",
-            "content": "Tell me a programming joke about bugs."
+            "content": "Tell me a programming joke about bugs. Use ONLY JSON, no markdown."
         }
     ],
     output_format=JokeResponse
@@ -609,7 +618,7 @@ joke = response.parsed
 print(joke)
 ```
 
-Note: Z.ai client doesn't currently support structured output
+Note: Anthropic's structured output may return JSON wrapped in markdown code blocks. If parsing fails, instruct the model to return "ONLY JSON, no markdown" in your prompt. Z.ai client doesn't currently support structured output.
 
 
 ## Google Gemini API
@@ -1351,6 +1360,8 @@ runner = OpenAIResponsesRunner(
 messages = runner.loop(prompt='How do I install Kafka?')
 ```
 
+Note: The model `openai/gpt-oss-20b` may not be recognized by ToyAIKit's pricing module. If you get a pricing error, use `llama-3.3-70b-versatile` instead.
+
 Groq also supports the chat completions API:
 
 ```python
@@ -1358,7 +1369,7 @@ from toyaikit.chat.runners import OpenAIChatCompletionsRunner
 from toyaikit.llm import OpenAIChatCompletionsClient
 
 groq_llm_client = OpenAIChatCompletionsClient(
-    model='openai/gpt-oss-20b',
+    model='llama-3.3-70b-versatile',
     client=groq_client
 )
 
@@ -1387,7 +1398,7 @@ tools_obj.add_tool(search_faq)
 runner = AnthropicMessagesRunner(
     tools=tools_obj,
     developer_prompt=developer_prompt,
-    llm_client=AnthropicClient(client=Anthropic())
+    llm_client=AnthropicClient()
 )
 
 messages = runner.loop(prompt='How do I install Kafka?')
@@ -1506,7 +1517,7 @@ agent = Agent(
 
 # Groq
 agent = Agent(
-    'groq:openai/gpt-oss-20b',
+    'groq:llama-3.3-70b-versatile',
     instructions='You are a course teaching assistant.',
     tools=[search_faq]
 )
@@ -1522,6 +1533,8 @@ agent = Agent(
 ## Structured Outputs
 
 ```python
+from typing import List
+
 class FAQAnswer(BaseModel):
     """Structured FAQ response."""
     answer: str = Field(description="The answer to the user's question")
@@ -1533,7 +1546,7 @@ agent = Agent(
     'openai:gpt-4o-mini',
     instructions='You are a course teaching assistant.',
     tools=[search_faq],
-    result_type=FAQAnswer  # Returns structured output
+    output_type=FAQAnswer  # Returns structured output
 )
 ```
 
