@@ -1239,18 +1239,18 @@ Type "stop" to end the conversation.
 
 For better organization, we can put our tools in a separate file. This makes it easier to share code between different notebooks and scripts.
 
-The `search_tools.py` file contains a `SearchTools` class with `search` and `add_entry` methods, along with helper functions to initialize the index.
+See [search_tools.py](search_tools.py) - it contains a `SearchTools` class with `search` and `add_entry` methods, along with helper functions to initialize the index.
 
 Download the file:
 
 ```bash
-wget https://raw.githubusercontent.com/alexeygrigorev/now-workshop-code/refs/heads/main/search_tools.py
+wget https://raw.githubusercontent.com/alexeygrigorev/now-workshop-agents/refs/heads/main/day1/search_tools.py
 ```
 
 Or with curl:
 
 ```bash
-curl -O https://raw.githubusercontent.com/alexeygrigorev/now-workshop-code/refs/heads/main/search_tools.py
+curl -O https://raw.githubusercontent.com/alexeygrigorev/now-workshop-agents/refs/heads/main/day1/search_tools.py
 ```
 
 Use the `SearchTools` class with ToyAIKit:
@@ -1433,30 +1433,26 @@ ToyAIKit provides `PydanticAIRunner` for interactive chat in Jupyter - see the T
 
 ## Adding Tools
 
+Use the `SearchTools` class from [search_tools.py](search_tools.py):
+
 ```python
-from typing import List, Dict
+from search_tools import init_tools
+from pydantic_ai import Agent
 
-def search_faq(query: str) -> List[Dict]:
-    """Search FAQ database for relevant entries.
-
-    Args:
-        query: The search query text
-
-    Returns:
-        List of matching FAQ entries with question and answer
-    """
-    results = index.search(
-        query=query,
-        filter_dict={'course': 'data-engineering-zoomcamp'},
-        num_results=5
-    )
-    return results
+search_tools = init_tools()
 
 agent = Agent(
     'openai:gpt-4o-mini',
     instructions='You are a course teaching assistant.',
-    tools=[search_faq]
+    tools=[search_tools.search, search_tools.add_entry]
 )
+```
+
+Run the agent:
+
+```python
+result = await agent.run('How do I install Kafka?')
+print(result.output)
 ```
 
 ## Switching Providers
