@@ -47,7 +47,7 @@ pip install dirdotenv
 echo 'eval "$(dirdotenv hook bash)"' >> ~/.bashrc
 ```
 
-Alternatively, export keys directly in your shell.
+Alternatively, export keys directly in your shell or use dotenv library (I'll show it later too).
 
 ## Project Initialization
 
@@ -56,6 +56,12 @@ Initialize the project and install core dependencies:
 ```bash
 uv init
 uv add jupyter openai
+```
+
+If you didn't have `dirdotenv`, you can also install `python-dotenv` to load `.env` files:
+
+```bash
+uv add python-dotenv
 ```
 
 Start Jupyter:
@@ -71,6 +77,15 @@ uv run jupyter notebook
 Large Language Models (LLMs) are accessed via APIs. You send a prompt and receive text back.
 
 ### OpenAI Client Setup
+
+If you used python-dotenv, import it to load .env files:
+
+```python
+import dotenv
+dotenv.load_dotenv()
+```
+
+Now import OpenAI:
 
 ```python
 from openai import OpenAI
@@ -1179,6 +1194,7 @@ Adding more tools is straightforward. Define another function with type hints an
 ```python
 def add_entry(question: str, answer: str) -> None:
     """Add a new entry to the FAQ database.
+    Returns "OK" if it's successful
 
     Args:
         question: The question to be added to the FAQ database.
@@ -1190,12 +1206,18 @@ def add_entry(question: str, answer: str) -> None:
         'section': 'user added',
         'course': 'data-engineering-zoomcamp'
     }
-    index.append(doc)
 
+    index.append(doc)
+    return "OK"
+```
+
+Add this to our tools collection:
+
+```python
 tools_obj.add_tool(add_entry)
 ```
 
-Now the agent has access to both search and add_entry. Run the agent:
+Now the agent has access to both `search` and `add_entry`. Run the agent:
 
 ```python
 result = runner.loop()
@@ -1204,6 +1226,25 @@ result = runner.loop()
 Try prompts like:
 - "How do I do well in module 1?"
 - "Add this back to FAQ"
+
+```python
+result_1 = runner.loop(
+    prompt='How do I do well in module 1?'
+)
+
+result_2 = runner.loop(
+    prompt='add this back to FAQ',
+    previous_messages=result_1.new_messages,
+)
+
+print(result_2.last_message)
+```
+
+Check that it was added to the index:
+
+```python
+index.docs[-1]
+```
 
 ### Callbacks for Visibility
 
@@ -1230,12 +1271,25 @@ Now each step is printed as it happens - you can see the LLM's decision to call 
 
 For continuous conversation, use `run()`. This adds the Q&A loop - an outer loop that keeps taking user input until they say stop. Combined with the tool-calling loop inside, you get a full conversational agent:
 
+For this to work, the runner needs to access to `chat_interface` that displays the results:
+
 ```python
-# Using the same runner from above with chat_interface
-runner.run()
+runner = OpenAIResponsesRunner(
+    tools=tools_obj,
+    developer_prompt=instructions,
+    llm_client=llm_client,
+    chat_interface=chat_interface
+)
+```
+
+Now run it:
+
+```python
+result = runner.run()
 ```
 
 Type "stop" to end the conversation.
+
 
 ### Organizing Tools in a Separate File
 
@@ -1259,31 +1313,12 @@ Use the `SearchTools` class with ToyAIKit:
 
 ```python
 from search_tools import init_tools
-from toyaikit.tools import Tools
-from toyaikit.chat.runners import OpenAIResponsesRunner
-from toyaikit.llm import OpenAIClient
-from toyaikit.chat import IPythonChatInterface
-
 search_tools = init_tools()
 
 agent_tools = Tools()
 agent_tools.add_tools(search_tools)
 
-developer_prompt = """
-You're a course teaching assistant.
-Search the FAQ database and provide sources.
-""".strip()
-
-chat_interface = IPythonChatInterface()
-
-runner = OpenAIResponsesRunner(
-    tools=agent_tools,
-    developer_prompt=developer_prompt,
-    chat_interface=chat_interface,
-    llm_client=OpenAIClient(model='gpt-4o-mini')
-)
-
-messages = runner.loop(prompt='How do I install Kafka?')
+messages = runner.run()
 ```
 
 
