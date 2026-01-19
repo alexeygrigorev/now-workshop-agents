@@ -1213,7 +1213,9 @@ Create a callback handler and pass it to `loop()`:
 
 ```python
 from toyaikit.chat.runners import DisplayingRunnerCallback
+from toyaikit.chat import IPythonChatInterface
 
+chat_interface = IPythonChatInterface()
 callback = DisplayingRunnerCallback(chat_interface)
 
 messages = runner.loop(
