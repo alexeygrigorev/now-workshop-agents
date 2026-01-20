@@ -740,10 +740,10 @@ So far we've used a single agent with all available tools. For complex tasks, we
 
 Benefits of multi-agent systems:
 
-- Specialization: Each agent focuses on a specific skill (clarification, planning, coding)
+- Specialization: Each agent focuses on a specific skill (clarification, naming, planning, coding)
 - Separation of concerns: Cleaner architecture with defined roles
-- Scalability: Easy to add new agents for new capabilities
 - Better control: Python code orchestrates the flow, not an LLM
+- Structured communication: Each agent produces predictable output for the next
 
 Disadvantages of multi-agent systems:
 
@@ -753,32 +753,36 @@ Disadvantages of multi-agent systems:
 
 ## Multi-Agent Architecture
 
-The workflow consists of:
+The workflow consists of four agents:
 
-1. Clarifier: Find out what the user wants to do
-2. Namer: Come up with a name for the project
-3. Planner: Prepare the technical requirements
-4. Executor: Implement the requirements
+1. Clarifier: Asks questions to understand requirements
+2. Namer: Generates a project name and slug
+3. Planner: Creates a step-by-step implementation plan
+4. Executor: Implements each step
 
 Execution flow:
 
 ```
-1. clarifier
-2. namer
-3. planner
+1. clarifier (asks questions until READY)
+2. namer (generates ProjectName with name and slug)
+3. planner (creates Plan with PlanStep[])
 4. for each step from planner: executor
 5. done
 ```
 
-## Planner and Executor
+## Structured Output Models
 
-The core of the multi-agent system is the planner-executor pattern.
-
-First, define structured output for the plan:
+Define Pydantic models for each agent's output:
 
 ```python
 from pydantic import BaseModel
 
+# For the Namer agent
+class ProjectName(BaseModel):
+    name: str  # Human-readable project name
+    slug: str  # URL/filesystem-safe folder name
+
+# For the Planner agent
 class PlanStep(BaseModel):
     name: str
     detailed_description: str
@@ -788,7 +792,71 @@ class Plan(BaseModel):
     steps: list[PlanStep]
 ```
 
-Create the planner agent with read-only tools:
+## Clarifier Agent
+
+The clarifier asks questions to understand the user's requirements:
+
+```python
+CLARIFIER_INSTRUCTIONS = """
+You are the Requirement Clarifier for a multi-agent AI coding assistant project.
+Your job is to come up with EXACTLY three multiple-choice questions to clarify the
+user's goals and constraints.
+
+Ask these questions one by one until you get the answers to all.
+Output "READY" when all questions are answered.
+
+Don't focus on implementation details (like target platform, etc).
+Only on the functional requirements.
+
+The final implementation will be a web-based application implemented as a Django service,
+so don't ask questions about interface.
+"""
+
+clarifier = Agent(
+    'openai:gpt-4o-mini',
+    instructions=CLARIFIER_INSTRUCTIONS
+)
+```
+
+The clarifier runs interactively until it outputs "READY":
+
+```python
+result = await clarifier.run("Create a todo list app")
+
+# Build Q&A prompt for the next agent
+qa_prompt = result.output  # Contains the full conversation
+```
+
+## Namer Agent
+
+The namer generates a project name and slug (structured output):
+
+```python
+NAMER_INSTRUCTIONS = """
+Your task is to come up with a name for a project.
+Name the project with a unique, meaningful title that reflects its purpose
+and avoids naming conflicts.
+
+Generate a slug (a URL- and filesystem-safe version of the project name)
+to serve as the project folder name.
+The slug should be short, up to 15 characters.
+
+Be original. Also be unpredictable.
+"""
+
+namer = Agent(
+    'openai:gpt-4o-mini',
+    instructions=NAMER_INSTRUCTIONS
+)
+
+# Run with structured output
+result = await namer.run(qa_prompt)
+project_name = result.output  # ProjectName(name="...", slug="...")
+```
+
+## Planner Agent
+
+The planner creates a detailed implementation plan (structured output):
 
 ```python
 PLANNER_INSTRUCTIONS = """
@@ -796,7 +864,7 @@ You are a planning agent responsible for designing the application based on func
 
 Your Role:
 
-- You get a set of functional requirements from the user
+- You get a set of functional requirements from the clarifier agent
 - You do not modify the codebase directly, but you must describe precisely the changes
   and actions that should be taken
 - Your goal is to translate the user requirements into a clear step-by-step plan
@@ -808,8 +876,12 @@ Instructions:
 - Data processing should happen in backend, not templates
 - Make sure the main interaction elements are accessible from the home page
 - Focus on clarity, modularity, and maintainability in your plan
+- Include tests
 - Don't include the exact code in the output, focus on the instructions
 - Don't overcomplicate. The output should be an MVP
+
+Your output will be consumed by a coding agent, so it must be precise, unambiguous,
+and broken down into logical steps.
 
 Only include coding instructions. The output will not be read by humans.
 The coding agent can only follow your suggested actions, but cannot plan.
@@ -826,9 +898,15 @@ planner = Agent(
         agent_tools.search_in_files
     ]
 )
+
+# Run with structured output
+result = await planner.run(qa_prompt)
+plan = result.output  # Plan(overview="...", steps=[PlanStep(...), ...])
 ```
 
-Create the executor agent with all tools:
+## Executor Agent
+
+The executor implements each step from the plan:
 
 ```python
 EXECUTOR_INSTRUCTIONS = """
@@ -881,26 +959,32 @@ executor = Agent(
 
 ## Executing the Plan
 
-First, get the plan from the planner:
+First, get the structured outputs from each agent:
 
 ```python
-plan_result = await planner.run("Create a todo list app")
+# 1. Clarifier gathers requirements
+clarifier_result = await clarifier.run("Create a todo list app")
+qa_prompt = clarifier_result.output
 
-# Parse the plan from structured output
-plan = plan_result.output
+# 2. Namer generates project name and slug
+namer_result = await namer.run(qa_prompt)
+project_name: ProjectName = namer_result.output
+
+# 3. Planner creates structured plan
+planner_result = await planner.run(qa_prompt)
+plan: Plan = planner_result.output
 ```
 
-Then execute each step in a loop:
+Then execute each step sequentially:
 
 ```python
 for i, step in enumerate(plan.steps):
     print(f"Step {i+1}/{len(plan.steps)}: {step.name}")
-    print(f"Description: {step.detailed_description}")
 
     prompt = f"""
 Project overview: {plan.overview}
 
-Current step - step #{i}:
+Current step - step #{i+1}:
 
 {step.name}
 
@@ -917,16 +1001,19 @@ File tree:
 ## Summary
 
 Multi-agent systems add specialization at the cost of complexity:
-- Planner creates structured plans with Pydantic models
-- Executor executes each step sequentially
-- Python code orchestrates the flow (not a coordinator agent)
-- Each agent has specific tools for its role
+
+- Clarifier: Gathers requirements through questions
+- Namer: Generates `ProjectName` with structured `name` and `slug`
+- Planner: Creates structured `Plan` with `PlanStep[]`
+- Executor: Implements each step sequentially
+- Python code orchestrates the entire flow
+- Each agent produces structured output that the next agent can consume reliably
 
 ## Advanced: Extending the Pattern
 
 You can extend the multi-agent pattern in several ways:
 
-1. Add more agents to the pipeline: clarifier (asks questions), namer (generates project names), validator (checks code quality)
+1. Add a validator agent that checks code quality after each step
 2. Add retry logic where executor continues until a step is marked complete
 
 These are ideas for extending the pattern. The core planner-executor pattern described above has been tested and works well. Adding more complexity should be done carefully as it increases costs and makes the system harder to debug.
