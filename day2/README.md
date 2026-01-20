@@ -1155,11 +1155,46 @@ result = await coordinator.run("Create a todo list app with add/delete functiona
 print(result.output)
 ```
 
-The coordinator will:
-1. Call researcher to understand the current codebase
-2. Call planner to create a structured plan
-3. Call writer for each step in the plan
-4. Call validator to review the implementation
+## How It Works
+
+The coordinator agent decides which agents to call and in what order. Each agent produces structured output that other agents can consume:
+
+```
+user task
+    ↓
+coordinator (decides what to do)
+    ↓
+┌─────────────────────────────────────────────────────────┐
+│  1. researcher → ResearchFindings                        │
+│     - summary: what was found                           │
+│     - relevant_files: list of important files          │
+│     - existing_patterns: conventions used               │
+│     - recommendations: suggestions for implementation   │
+├─────────────────────────────────────────────────────────┤
+│  2. planner → Plan                                        │
+│     - overview: brief description                       │
+│     - steps: list of PlanStep (name, description)      │
+├─────────────────────────────────────────────────────────┤
+│  3. writer → implements code                             │
+│     Uses Plan steps and ResearchFindings as context     │
+├─────────────────────────────────────────────────────────┤
+│  4. validator → ValidationReport                         │
+│     - status: "pass", "fail", or "warning"              │
+│     - issues_found: list of problems                    │
+│     - suggestions: list of improvements                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Why Structured Output?
+
+Using Pydantic models for agent output is crucial for multi-agent systems:
+
+- Predictable shape: Each agent knows exactly what format to expect
+- Type safety: Pydantic validates the output structure
+- Composability: Agents can consume other agents' output reliably
+- Debugging: Structured data is easier to inspect than free text
+
+For example, the researcher produces `ResearchFindings` with `relevant_files`. The planner can use this list to focus on the right files. The writer receives both the plan AND the research findings, giving it full context.
 
 ## Summary
 
@@ -1167,6 +1202,8 @@ The coordinator agent pattern is an alternative to fixed orchestration:
 
 - Fixed orchestration (Part 5): Python code controls the flow, tested and predictable
 - Coordinator agent (Part 6): LLM controls the flow, flexible but experimental
+
+Key difference: In Part 5, Python code orchestrates agents in a fixed sequence. In Part 6, the coordinator LLM decides dynamically which agents to call, using structured outputs to pass data between them.
 
 The coordinator pattern shines when:
 - Tasks vary widely in structure
