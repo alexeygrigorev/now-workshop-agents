@@ -1,0 +1,11 @@
+[project]
+name = "faq-mcp"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "fastmcp>=2.14.3",
+    "minsearch>=0.0.7",
+    "requests>=2.32.5",
+    "toyaikit>=0.0.9",
+]

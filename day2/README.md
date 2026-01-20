@@ -26,6 +26,12 @@ pip install dirdotenv
 echo 'eval "$(dirdotenv hook bash)"' >> ~/.bashrc
 ```
 
+Alternatively, use `python-dotenv` to load environment variables in your code:
+
+```bash
+uv add python-dotenv
+```
+
 Create a `.env` file with your API keys:
 
 ```bash
@@ -34,6 +40,13 @@ OPENAI_API_KEY='sk-...'
 ANTHROPIC_API_KEY='sk-ant-...'
 GROQ_API_KEY='gsk_...'
 GEMINI_API_KEY='...'
+```
+
+Load environment variables in your code:
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
 ```
 
 # Part 1: Setting Up the Django Project Template
@@ -46,11 +59,95 @@ We're building a "Project Bootstrapper" agent - an AI agent that can:
  - Execute bash commands
  - Modify a Django template to build applications
 
-This is the foundation for tools like Cursor, Windsurf, and other AI coding assistants.
+This is the foundation for tools like [Lovable](https://lovable.dev) - an AI coding assistant that uses a project template approach similar to what we're building here.
+
+## Creating the Template
+
+Alternatively, create the Django template from scratch:
+
+```bash
+mkdir django_template
+cd django_template/
+uv init
+rm main.py
+
+uv add django
+uv run django-admin startproject myproject .
+uv run python manage.py startapp myapp
+```
+
+Add the new app (`myapp`) into `myproject/settings.py`'s `INSTALLED_APPS`:
+
+```python
+INSTALLED_APPS = [
+    # ... other apps
+    'myapp',
+]
+```
+
+Create a `Makefile` with useful commands:
+
+```makefile
+.PHONY: install migrate run
+
+install:
+    uv sync --dev
+
+migrate:
+    uv run python manage.py migrate
+
+run:
+    uv run python manage.py runserver
+```
+
+Create the base html template in `templates/base.html`:
+
+```html
+{% block title %}{% endblock %}
+{% block content %}{% endblock %}
+```
+
+Add this templates directory to the settings file:
+
+```python
+TEMPLATES = [{
+    'DIRS': [BASE_DIR / 'templates'],
+    # ...
+}]
+```
+
+Create the home view:
+
+```python
+# myapp/views.py
+def home(request):
+    return render(request, 'home.html')
+
+# myproject/urls.py
+from myapp import views
+
+urlpatterns = [
+    # ...
+    path('', views.home, name='home'),
+]
+```
+
+HTML code for `myapp/templates/home.html`:
+
+```html
+{% extends 'base.html' %}
+{% block content %}
+
+## Home
+
+{% endblock %}
+```
+
+Add TailwindCSS and Font-Awesome to `base.html`. See the pre-built template for the complete setup.
 
 ## Getting the Template
 
-Download the Django template:
+Download the pre-built Django template:
 
 ```bash
 git clone https://github.com/alexeygrigorev/django_template.git
@@ -110,43 +207,267 @@ Our coding agent needs these capabilities:
 4. See file tree - Navigate the project
 5. Search in files - Find specific code
 
+## Why a Class Instead of Functions?
+
+We organize tools into a class rather than standalone functions for several reasons:
+
+- Shared state: The `project_path` is stored once in `__init__` and used by all methods
+- Encapsulation: Related functionality is grouped together logically
+- Agent compatibility: AI agent frameworks expect tools as class methods that can be passed around
+- Easier integration: The entire `AgentTools` instance can be passed to an agent with all methods available
+
 Source: https://github.com/alexeygrigorev/workshops/blob/main/coding-agent/tools.py
 
-See [agent_tools.py](agent_tools.py) for the `AgentTools` class implementation with methods for file access, bash execution, and search.
+## AgentTools Class Stub
+
+Create `agent_tools.py` with the class stub:
+
+```python
+class AgentTools:
+
+    def __init__(self, project_path):
+        pass
+
+    def read_file(self, filepath):
+        pass
+
+    def write_file(self, filepath, content):
+        pass
+
+    def execute_bash_command(self, command, cwd=None):
+        pass
+
+    def see_file_tree(self, root_dir="."):
+        pass
+
+    def search_in_files(self, pattern, root_dir="."):
+        pass
+```
+
+## Prompt to Add Type Hints and Implement
+
+Use this prompt with ChatGPT to add type hints, docstrings, and implement the methods:
+
+```
+Please enhance this AgentTools class with type hints, docstrings, and simple implementations for file operations, bash execution, and search.
+```
+
+## Implementation
+
+See [agent_tools.py](agent_tools.py) for the complete implementation with type hints, docstrings, and full method implementations.
 
 ## Testing the Tools
+
+Initialize the tools with your Django template:
 
 ```python
 from pathlib import Path
 from agent_tools import AgentTools
 
-# Initialize with our template
 project_path = Path("django_template")
 tools = AgentTools(project_path)
+```
 
-# Test file tree
+List all files in the project:
+
+```python
 files = tools.see_file_tree()
 print("Files in project:")
 for f in files[:10]:
     print(f"  {f}")
+```
 
-# Test read file
+Read a specific file:
+
+```python
 views_content = tools.read_file("myapp/views.py")
-print("\nViews.py content:")
+print("Views.py content:")
 print(views_content)
+```
 
-# Test search
+Search for a pattern across files:
+
+```python
 matches = tools.search_in_files("def home")
-print("\nSearching for 'def home':")
+print("Searching for 'def home':")
 for path, line_num, line in matches:
     print(f"  {path}:{line_num} - {line.strip()}")
 ```
 
+## Copying the Template and Initializing Tools
+
+Create a function to copy the template into a new project directory:
+
+```python
+import os
+import shutil
+
+def start(project_name):
+    if os.path.exists(project_name):
+        print(f"Directory '{project_name}' already exists.")
+        return
+
+    shutil.copytree('django_template', project_name)
+    print(f"Django template copied to '{project_name}' directory.")
+```
+
+Run it to create your project:
+
+```python
+project_name = "my_project"
+start(project_name)
+```
+
+Now initialize the tools with your new project path:
+
+```python
+from pathlib import Path
+from agent_tools import AgentTools
+
+project_path = Path(project_name)
+tools = AgentTools(project_path)
+
+# Verify tools are working
+files = tools.see_file_tree()
+print(f"Found {len(files)} files in project")
+```
+
 # Part 3: Designing and Developing the Coding Agent
 
-## The Developer Prompt
+## Starting with a Simple Prompt
 
-The key to a good coding agent is a clear developer prompt:
+Let's start with a minimal developer prompt:
+
+```python
+DEVELOPER_PROMPT = """
+You are a coding agent. Your task is to modify the provided Django project
+according to user instructions.
+"""
+```
+
+## Creating the Agent
+
+Use ChatGPT to help set up the agent:
+
+```
+I want to create a coding agent using ToyAIKit. Help me with these steps:
+
+1. Import what I need: Path from pathlib, OpenAI from openai, and the toyaikit components (Tools, IPythonChatInterface, OpenAIResponsesRunner, OpenAIClient)
+2. Initialize AgentTools with my project path
+3. Create a Tools object and add my agent_tools to it
+4. Set up the OpenAI client
+5. Create the runner with all components
+6. Run the agent
+```
+
+Import the required libraries:
+
+```python
+from pathlib import Path
+from openai import OpenAI
+from toyaikit.tools import Tools
+from toyaikit.chat import IPythonChatInterface
+from toyaikit.chat.runners import OpenAIResponsesRunner
+from toyaikit.llm import OpenAIClient
+from agent_tools import AgentTools
+```
+
+Initialize your tools and register them:
+
+```python
+agent_tools = AgentTools(Path(project_name))
+tools_obj = Tools()
+tools_obj.add_tools(agent_tools)
+```
+
+Create the LLM client and chat interface:
+
+```python
+llm_client = OpenAIClient(client=OpenAI(), model='gpt-4o-mini')
+chat_interface = IPythonChatInterface()
+```
+
+Create and run the agent:
+
+```python
+runner = OpenAIResponsesRunner(
+    tools=tools_obj,
+    developer_prompt=DEVELOPER_PROMPT,
+    chat_interface=chat_interface,
+    llm_client=llm_client
+)
+
+result = runner.run()
+```
+
+Save the result to a file:
+
+```python
+Path("agent_result.txt").write_text(str(result))
+```
+
+Note: You can pass input directly like `runner.run(input="Create a todo list app")` or let the chat interface prompt you.
+
+## Improving the Prompt with ChatGPT
+
+The simple prompt works, but the agent may struggle with specific details. Use ChatGPT to expand it:
+
+```
+I have a Django coding agent with this prompt:
+
+"You are a coding agent. Your task is to modify the provided Django project according to user instructions."
+
+The project uses Django 5.2.4, uv, TailwindCSS, and has an app called 'myapp'.
+
+Please improve my prompt to make the agent more effective. Include:
+1. Instructions to explore before making changes
+2. Style guidelines (TailwindCSS)
+3. Best practices for Django
+4. A reminder not to run 'runserver'
+```
+
+## Better Version
+
+After iterating with ChatGPT, you might get something like this:
+
+```python
+DEVELOPER_PROMPT = """
+You are a coding agent. Your task is to modify the provided Django project
+according to user instructions. You don't tell the user what to do; you do it
+yourself using the available tools.
+
+## Project Overview
+
+- Django 5.2.4 with uv for environment management
+- SQLite database
+- Custom app called 'myapp'
+- HTML templates with TailwindCSS styling
+
+## Instructions
+
+1. First, explore the project structure to understand what exists
+2. Think about the sequence of changes needed
+3. Make changes step by step
+4. Use TailwindCSS classes for styling
+5. Don't execute 'runserver' - use other commands to verify
+"""
+```
+
+## Final Version with ChatGPT Help
+
+For a production-ready agent, ask ChatGPT to add more detail:
+
+```
+Please expand this Django coding agent prompt to include:
+- A complete file tree showing the project structure
+- Detailed descriptions of each main directory and file
+- Specific Django best practices to follow
+- Instructions for using Font-Awesome icons
+- How to handle models, views, URLs, and templates
+- Testing and verification steps
+```
+
+This will give you a comprehensive prompt:
 
 ```python
 DEVELOPER_PROMPT = """
@@ -188,47 +509,10 @@ The project is a Django 5.2.4 web application scaffolded with best practices:
 5. Keep server-side logic in views, minimal logic in templates
 6. Don't execute 'runserver' - use other commands to verify
 7. After changes, suggest how to test the application
-
-## Available Tools
-
-- read_file(filepath): Read any file
-- write_file(filepath, content): Write or modify files
-- execute_bash_command(command, cwd): Run shell commands
-- see_file_tree(root_dir): List all files
-- search_in_files(pattern, root_dir): Search for code patterns
-""".strip()
+"""
 ```
 
-## Creating the Agent with ToyAIKit
-
-```python
-from pathlib import Path
-from openai import OpenAI
-from toyaikit.tools import Tools
-from toyaikit.chat import IPythonChatInterface
-from toyaikit.chat.runners import OpenAIResponsesRunner
-from toyaikit.llm import OpenAIClient
-from agent_tools import AgentTools
-
-# Initialize tools
-agent_tools = AgentTools(Path("django_template"))
-tools_obj = Tools()
-tools_obj.add_tools(agent_tools)
-
-# Create the agent
-llm_client = OpenAIClient(client=OpenAI())
-chat_interface = IPythonChatInterface()
-
-runner = OpenAIResponsesRunner(
-    tools=tools_obj,
-    developer_prompt=DEVELOPER_PROMPT,
-    chat_interface=chat_interface,
-    llm_client=llm_client
-)
-
-# Run the agent
-runner.run()
-```
+See the full example at: https://github.com/alexeygrigorev/workshops/blob/main/coding-agent/README.md
 
 ## Example Session
 
@@ -249,211 +533,560 @@ The agent will:
 After the agent finishes, run the app:
 
 ```bash
-cd django_template
+cd my_project
 make migrate
 make run
 ```
 
-# Part 4: Coordinating Multiple Agents
+# Part 4: PydanticAI and Monitoring
 
 Source: https://github.com/alexeygrigorev/ai-bootcamp
 
-## Why Multiple Agents?
+We'll progress through two stages:
+1. Run agent with PydanticAI directly
+2. Add monitoring with Logfire
 
-Complex tasks benefit from specialized agents:
- - Research Agent: Gathers information, explores codebase
- - Writer Agent: Creates code and content
- - Reviewer Agent: Checks for issues
- - Fixer Agent: Applies corrections
+## Running with PydanticAI
 
-## Multi-Agent with PydanticAI
+So far we've used ToyAIKit, which is great for learning and experimentation. Now let's switch to PydanticAI.
+
+Why PydanticAI?
+
+- Production-ready: PydanticAI is built for real-world applications with better error handling and type safety
+- Logfire integration: Built-in observability through Logfire for monitoring agent behavior, costs, and debugging
+- Better async support: Designed for asynchronous operations from the ground up
+- Active development: Regularly updated with improvements and new features
+
+Now let's do the same with PydanticAI instead of ToyAIKit.
+
+Import what you need:
 
 ```python
 from pathlib import Path
 from pydantic_ai import Agent
 from agent_tools import AgentTools
 
-# Initialize tools
-agent_tools = AgentTools(Path("django_template"))
+agent_tools = AgentTools(Path(project_name))
+```
 
-# Research Agent - explores the codebase
-researcher = Agent(
+Define the developer prompt with complete instructions:
+
+```python
+CODING_AGENT_INSTRUCTIONS = """
+You are a coding agent. Your task is to modify the provided Django project
+according to user instructions. You don't tell the user what to do; you do it
+yourself using the available tools.
+
+## Project Overview
+
+The project is a Django 5.2.4 web application scaffolded with best practices:
+- Python 3.10+
+- Django 5.2.4
+- uv for environment management
+- SQLite database
+- Standard Django apps with a custom app called 'myapp'
+- HTML templates with TailwindCSS styling
+
+## File Tree
+
+├── manage.py
+├── pyproject.toml
+├── myapp/
+│   ├── views.py
+│   ├── models.py
+│   ├── templates/home.html
+│   └── ...
+├── myproject/
+│   ├── settings.py
+│   ├── urls.py
+│   └── ...
+└── templates/base.html
+
+## Instructions
+
+1. First, explore the project structure to understand what exists
+2. Think about the sequence of changes needed
+3. Make changes step by step
+4. Use TailwindCSS classes for styling
+5. Keep server-side logic in views, minimal logic in templates
+6. Don't execute 'runserver' - use other commands to verify
+7. After changes, suggest how to test the application
+"""
+```
+
+Create the agent with tools:
+
+```python
+agent = Agent(
     'openai:gpt-4o-mini',
-    instructions="""
-    You are a code researcher. Your job is to:
-    1. Explore the codebase structure
-    2. Find relevant files and patterns
-    3. Understand existing conventions
-    4. Report your findings clearly
-
-    Use search and read_file tools extensively.
-    """,
+    instructions=CODING_AGENT_INSTRUCTIONS,
     tools=[
-        agent_tools.search_in_files,
-        agent_tools.see_file_tree,
-        agent_tools.read_file
-    ]
-)
-
-# Writer Agent - creates and modifies code
-writer = Agent(
-    'openai:gpt-4o-mini',
-    instructions="""
-    You are a code writer. Your job is to:
-    1. Create new files based on specifications
-    2. Modify existing files following Django patterns
-    3. Use TailwindCSS for styling
-    4. Follow Python and Django best practices
-
-    Use write_file tool to create code.
-    """,
-    tools=[
+        agent_tools.read_file,
         agent_tools.write_file,
-        agent_tools.read_file
+        agent_tools.execute_bash_command,
+        agent_tools.see_file_tree,
+        agent_tools.search_in_files
+    ]
+)
+```
+
+Run the agent directly:
+
+```python
+result = await agent.run("Create a todo list app")
+
+print(result.output)
+```
+
+## Monitoring Tool Calls with Callbacks
+
+To see what tools the agent is calling, create a callback class:
+
+```python
+from pydantic_ai.messages import FunctionToolCallEvent
+
+class ToolCallback:
+
+    async def print_function_calls(self, ctx, event):
+        # Handle nested async streams
+        if hasattr(event, "__aiter__"):
+            async for sub in event:
+                await self.print_function_calls(ctx, sub)
+            return
+
+        if isinstance(event, FunctionToolCallEvent):
+            tool_name = event.part.tool_name
+            args = event.part.args
+            print(f"TOOL CALL: {tool_name}({args})")
+
+    async def __call__(self, ctx, event):
+        return await self.print_function_calls(ctx, event)
+```
+
+Use the callback when running the agent:
+
+```python
+callback = ToolCallback()
+
+result = await agent.run(
+    "Create a todo list app",
+    event_stream_handler=callback
+)
+```
+
+Now you can see exactly which tools the agent uses:
+
+```
+TOOL CALL: see_file_tree({'root_dir': '.'})
+TOOL CALL: read_file({'filepath': 'myapp/models.py'})
+TOOL CALL: write_file({'filepath': 'myapp/models.py', 'content': '...'})
+...
+```
+
+## Adding Monitoring with Logfire
+
+Install Logfire:
+
+```bash
+uv add logfire
+```
+
+Add the Logfire token to your `.env` file:
+
+```bash
+LOGFIRE_TOKEN='your-logfire-token-here'
+```
+
+Configure Logfire and instrument PydanticAI:
+
+```python
+import logfire
+
+# Configure Logfire (reads LOGFIRE_TOKEN from .env)
+logfire.configure()
+
+# Instrument all PydanticAI calls
+logfire.instrument_pydantic_ai()
+```
+
+Now create a new agent - all calls will be traced:
+
+```python
+agent = Agent(
+    'openai:gpt-4o-mini',
+    instructions=CODING_AGENT_INSTRUCTIONS,
+    tools=[
+        agent_tools.read_file,
+        agent_tools.write_file,
+        agent_tools.execute_bash_command,
+        agent_tools.see_file_tree,
+        agent_tools.search_in_files
     ]
 )
 
-# Reviewer Agent - checks for issues
-reviewer = Agent(
-    'openai:gpt-4o-mini',
-    instructions="""
-    You are a code reviewer. Your job is to:
-    1. Check code for bugs and issues
-    2. Verify Django patterns are followed
-    3. Suggest improvements
-    4. Report specific problems with file locations
+# This run is now traced in Logfire
+result = await agent.run("Add a contact page to the app")
+```
 
-    Read files and provide constructive feedback.
-    """,
+## Summary
+
+We switched from ToyAIKit to PydanticAI and added monitoring:
+- PydanticAI runs agents directly with `await agent.run()`
+- Logfire instruments all agent calls automatically
+- Tool callbacks let you monitor individual tool calls in real-time
+
+# Part 5: Multi-Agent Systems
+
+Source: https://github.com/alexeygrigorev/ai-bootcamp
+
+## Why Multiple Agents?
+
+So far we've used a single agent with all available tools. For complex tasks, we can split work across specialized agents.
+
+Benefits of multi-agent systems:
+
+- Specialization: Each agent focuses on a specific skill (clarification, planning, coding)
+- Separation of concerns: Cleaner architecture with defined roles
+- Scalability: Easy to add new agents for new capabilities
+- Better control: Python code orchestrates the flow, not an LLM
+
+Disadvantages of multi-agent systems:
+
+- Complexity: More moving parts to understand and debug
+- Higher costs: Each agent call consumes tokens
+- Harder to test: You need to test each agent AND their interactions
+
+## Multi-Agent Architecture
+
+The workflow consists of:
+
+1. Clarifier: Find out what the user wants to do
+2. Namer: Come up with a name for the project
+3. Planner: Prepare the technical requirements
+4. Executor: Implement the requirements
+
+Execution flow:
+
+```
+1. clarifier
+2. namer
+3. planner
+4. for each step from planner: executor
+5. done
+```
+
+## Planner and Executor
+
+The core of the multi-agent system is the planner-executor pattern.
+
+First, define structured output for the plan:
+
+```python
+from pydantic import BaseModel
+
+class PlanStep(BaseModel):
+    name: str
+    detailed_description: str
+
+class Plan(BaseModel):
+    overview: str
+    steps: list[PlanStep]
+```
+
+Create the planner agent with read-only tools:
+
+```python
+PLANNER_INSTRUCTIONS = """
+You are a planning agent responsible for designing the application based on functional requirements.
+
+Your Role:
+
+- You get a set of functional requirements from the user
+- You do not modify the codebase directly, but you must describe precisely the changes
+  and actions that should be taken
+- Your goal is to translate the user requirements into a clear step-by-step plan
+
+Instructions:
+
+- Check the file structure to better plan your work
+- Always include styling in the plan
+- Data processing should happen in backend, not templates
+- Make sure the main interaction elements are accessible from the home page
+- Focus on clarity, modularity, and maintainability in your plan
+- Don't include the exact code in the output, focus on the instructions
+- Don't overcomplicate. The output should be an MVP
+
+Only include coding instructions. The output will not be read by humans.
+The coding agent can only follow your suggested actions, but cannot plan.
+
+The coding agent will see only one step at a time, so make steps self-contained.
+"""
+
+planner = Agent(
+    'openai:gpt-4o-mini',
+    instructions=PLANNER_INSTRUCTIONS,
     tools=[
+        agent_tools.see_file_tree,
         agent_tools.read_file,
         agent_tools.search_in_files
     ]
 )
 ```
 
-## Coordinator Agent
-
-The coordinator orchestrates other agents:
+Create the executor agent with all tools:
 
 ```python
-coordinator = Agent(
+EXECUTOR_INSTRUCTIONS = """
+You are a coding agent responsible for applying specific modifications to
+a Django project based on instructions from a planning agent.
+
+You are given a plan and you need to execute it step by step.
+Follow the instructions precisely and modify the codebase directly
+using the tools available to you.
+
+Each time you execute a step, give a short explanation of what you did and which
+step number you finished.
+
+You do not ask questions. You do not suggest. You execute.
+
+## Project Context
+
+This is a Django 5.2.4 web application scaffolded with common conventions and clean separation of concerns.
+
+Key technologies and constraints:
+
+- Django 5.2.4
+- SQLite for local database
+- TailwindCSS for all styling
+- HTML templates used for rendering
+
+## Execution rules
+
+- Do not run the development server, but you may run diagnostic or validation commands
+- Use TailwindCSS to create clean and user-friendly UI components
+- Do not place logic in templates. Use views or models for data processing
+- You can create, edit, or delete any files as needed to complete your task
+- Read relevant files before making edits to make sure your work is correct
+
+Act with precision. Implement the plan.
+"""
+
+executor = Agent(
     'openai:gpt-4o-mini',
-    instructions="""
-    You are coordinating a team of coding agents to build Django applications.
-
-    Your team:
-    - researcher: Explores codebase and finds information
-    - writer: Creates and modifies code
-    - reviewer: Checks for issues
-
-    Process:
-    1. When given a task, delegate to researcher first
-    2. Use research findings to guide the writer
-    3. Have reviewer check the work
-    4. Apply fixes if reviewer finds issues
-    5. Report final status to the user
-
-    Be specific in your delegation - tell agents exactly what to do.
-    """,
+    instructions=EXECUTOR_INSTRUCTIONS,
     tools=[
-        researcher,
-        writer,
-        reviewer
+        agent_tools.read_file,
+        agent_tools.write_file,
+        agent_tools.execute_bash_command,
+        agent_tools.see_file_tree,
+        agent_tools.search_in_files
     ]
 )
 ```
 
-### Running Multi-Agent with ToyAIKit
+## Executing the Plan
+
+First, get the plan from the planner:
 
 ```python
-from toyaikit.chat.runners import PydanticAIRunner
+plan_result = await planner.run("Create a todo list app")
 
-runner = PydanticAIRunner(
-    chat_interface=IPythonChatInterface(),
-    agent=coordinator
-)
-
-await runner.run()
+# Parse the plan from structured output
+plan = plan_result.output
 ```
 
-# Part 5: Monitoring & Guardrails with Logfire
+Then execute each step in a loop:
+
+```python
+for i, step in enumerate(plan.steps):
+    print(f"Step {i+1}/{len(plan.steps)}: {step.name}")
+    print(f"Description: {step.detailed_description}")
+
+    prompt = f"""
+Project overview: {plan.overview}
+
+Current step - step #{i}:
+
+{step.name}
+
+{step.detailed_description}
+
+File tree:
+{chr(10).join(agent_tools.see_file_tree())}
+""".strip()
+
+    result = await executor.run(prompt)
+    print(result.output)
+```
+
+## Summary
+
+Multi-agent systems add specialization at the cost of complexity:
+- Planner creates structured plans with Pydantic models
+- Executor executes each step sequentially
+- Python code orchestrates the flow (not a coordinator agent)
+- Each agent has specific tools for its role
+
+## Advanced: Extending the Pattern
+
+You can extend the multi-agent pattern in several ways:
+
+1. Add more agents to the pipeline: clarifier (asks questions), namer (generates project names), validator (checks code quality)
+2. Add retry logic where executor continues until a step is marked complete
+
+These are ideas for extending the pattern. The core planner-executor pattern described above has been tested and works well. Adding more complexity should be done carefully as it increases costs and makes the system harder to debug.
+
+Source: https://github.com/alexeygrigorev/ai-bootcamp/blob/main/05-use-cases/01-coding-agent/06-multiple-agents.md
+
+# Part 6: Coordinator Agent Pattern
+
+Source: https://github.com/alexeygrigorev/ai-bootcamp
+
+In Part 5, we used Python code to orchestrate agents in a fixed sequence. Another approach is to let a coordinator agent decide which agents to call and when.
+
+This pattern is more flexible but less predictable. The coordinator agent decides at runtime which specialized agent to invoke based on the task.
+
+## Why Use a Coordinator Agent?
+
+Benefits:
+- Flexible: The coordinator can adapt the flow based on the situation
+- Dynamic: Different tasks can trigger different agent combinations
+- Declarative: You describe what agents can do, the coordinator figures out how
+
+Drawbacks:
+- Less predictable: The LLM decides which agents to call, not your code
+- Harder to debug: You need to inspect what the coordinator decided
+- More expensive: Each delegation adds another LLM call
+- Untested: This is an experimental pattern
+
+## Setting Up the Coordinator
+
+Define specialized agents:
+
+```python
+from pydantic_ai import Agent
+
+RESEARCHER_INSTRUCTIONS = """
+You are a code researcher. Your job is to:
+1. Explore the codebase structure
+2. Find relevant files and patterns
+3. Understand existing conventions
+4. Report your findings clearly
+
+Use search and read_file tools extensively.
+"""
+
+researcher = Agent(
+    'openai:gpt-4o-mini',
+    instructions=RESEARCHER_INSTRUCTIONS,
+    tools=[
+        agent_tools.see_file_tree,
+        agent_tools.read_file,
+        agent_tools.search_in_files
+    ]
+)
+
+WRITER_INSTRUCTIONS = """
+You are a code writer. Your job is to:
+1. Create new files based on specifications
+2. Modify existing files following Django patterns
+3. Use TailwindCSS for styling
+4. Follow Python and Django best practices
+
+Use write_file tool to create code.
+"""
+
+writer = Agent(
+    'openai:gpt-4o-mini',
+    instructions=WRITER_INSTRUCTIONS,
+    tools=[
+        agent_tools.write_file,
+        agent_tools.read_file
+    ]
+)
+```
+
+Create the coordinator with tools that call other agents:
+
+```python
+from pydantic_ai import RunContext
+
+COORDINATOR_INSTRUCTIONS = """
+You coordinate a team to build Django applications:
+- researcher: Explores the codebase and finds information
+- writer: Writes and modifies code
+
+When given a task, decide which agent to use:
+- Use researcher when you need to explore or understand the codebase
+- Use writer when you need to create or modify files
+
+You can call multiple agents in sequence if needed.
+Always use the available tools to call your team members.
+"""
+
+coordinator = Agent(
+    'openai:gpt-4o-mini',
+    instructions=COORDINATOR_INSTRUCTIONS
+)
+
+@coordinator.tool
+async def research(ctx: RunContext, query: str) -> str:
+    """Runs the researcher agent to explore the codebase."""
+    result = await researcher.run(user_prompt=query)
+    return result.output
+
+@coordinator.tool
+async def write(ctx: RunContext, filepath: str, instruction: str) -> str:
+    """Runs the writer agent to create or modify files."""
+    prompt = f"Write to {filepath}: {instruction}"
+    result = await writer.run(user_prompt=prompt)
+    return result.output
+```
+
+Run the coordinator:
+
+```python
+result = await coordinator.run("Create a todo list app")
+
+print(result.output)
+```
+
+## Summary
+
+The coordinator agent pattern is an alternative to fixed orchestration:
+
+- Fixed orchestration (Part 5): Python code controls the flow, tested and predictable
+- Coordinator agent (Part 6): LLM controls the flow, flexible but experimental
+
+Use the coordinator pattern when you need flexibility and can tolerate unpredictability. Use fixed orchestration when you need reliability and control.
+
+Note: This pattern has not been extensively tested. It works technically but may be less reliable than the fixed orchestration approach.
+
+# Part 7: Guardrails
 
 Source: https://ai.pydantic.dev
 
-## Why Monitoring Matters
+## Why Guardrails Matter
 
-When building agents, you need to observe:
- - What tools are being called
- - How much each API call costs
- - How long operations take
- - Whether the agent is behaving safely
+When building agents, you need to ensure safety:
+- Block dangerous commands
+- Limit costs and token usage
+- Validate inputs and outputs
+- Moderate content for appropriateness
 
-## Setting Up Logfire
+## Input Validation
 
-```bash
-uv add logfire
-```
-
-Configure Logfire:
+Validate user input before passing it to the agent:
 
 ```python
-import os
-import logfire
-
-# Log in to Logfire (free for development)
-logfire.configure(
-    send_to_logfire=True,
-    api_key=os.getenv('LOGFIRE_TOKEN')
-)
-```
-
-## Instrumenting PydanticAI Agents
-
-```python
-from pathlib import Path
-from pydantic_ai import Agent
-from pydantic_ai.logfire import instrument_pydantic_ai
-from agent_tools import AgentTools
-
-# Initialize tools
-agent_tools = AgentTools(Path("django_template"))
-
-# Instrument all PydanticAI calls
-instrument_pydantic_ai()
-
-# Now all agent calls are automatically traced
-agent = Agent(
-    'openai:gpt-4o-mini',
-    instructions='You are a helpful assistant.',
-    tools=[agent_tools.read_file, agent_tools.write_file]
-)
-```
-
-## Viewing Traces
-
-Every agent run creates a trace in Logfire showing:
- - Input prompts
- - Tool calls made
- - LLM responses
- - Token usage
- - Costs
- - Timing
-
-Visit https://logfire.pydantic.dev to view your traces.
-
-## Guardrails
-
-### Input Validation
-
-```python
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 class UserRequest(BaseModel):
     """Validate user requests to the agent."""
     task: str = Field(..., min_length=5, max_length=1000)
 
-    @validator('task')
+    @field_validator('task')
+    @classmethod
     def forbid_dangerous_commands(cls, v):
         dangerous = ['rm -rf', 'format', 'delete all', 'drop table']
         if any(cmd in v.lower() for cmd in dangerous):
@@ -464,12 +1097,13 @@ class UserRequest(BaseModel):
 request = UserRequest(task=user_input)
 ```
 
-### Output Sanitization
+## Output Sanitization
+
+Check generated code for harmful patterns:
 
 ```python
 def sanitize_code_output(code: str) -> str:
     """Remove potentially harmful patterns from generated code."""
-    # Check for import blacklists
     dangerous_imports = ['os.system', 'subprocess.call', 'eval', 'exec']
 
     for imp in dangerous_imports:
@@ -484,12 +1118,13 @@ if hasattr(result, 'data') and result.data:
     sanitize_code_output(result.data)
 ```
 
-### Cost Limits
+## Cost Limits
+
+Limit the number of tool calls and tokens per run:
 
 ```python
 from pydantic_ai import Agent, RunLimits
 
-# Set limits on agent runs
 agent = Agent(
     'openai:gpt-4o-mini',
     instructions='You are a coding assistant.',
@@ -500,7 +1135,9 @@ agent = Agent(
 )
 ```
 
-### Content Moderation
+## Content Moderation
+
+Check if agent outputs are appropriate:
 
 ```python
 from openai import OpenAI
@@ -519,26 +1156,35 @@ else:
     print("Content flagged as inappropriate")
 ```
 
-## Complete Agent with Monitoring
+## Complete Agent with Guardrails
+
+Putting it all together:
 
 ```python
 from pathlib import Path
 from pydantic_ai import Agent, RunLimits
-from pydantic_ai.logfire import instrument_pydantic_ai
-import logfire
 from agent_tools import AgentTools
+from pydantic import BaseModel, Field, field_validator
+
+class UserRequest(BaseModel):
+    """Validate user requests to the agent."""
+    task: str = Field(..., min_length=5, max_length=1000)
+
+    @field_validator('task')
+    @classmethod
+    def forbid_dangerous_commands(cls, v):
+        dangerous = ['rm -rf', 'format', 'delete all', 'drop table']
+        if any(cmd in v.lower() for cmd in dangerous):
+            raise ValueError('Potentially dangerous command detected')
+        return v
 
 # Initialize tools
-agent_tools = AgentTools(Path("django_template"))
+agent_tools = AgentTools(Path(project_name))
 
-# Configure monitoring
-logfire.configure(send_to_logfire=True)
-instrument_pydantic_ai()
-
-# Create instrumented agent
+# Create agent with limits
 agent = Agent(
     'openai:gpt-4o-mini',
-    instructions=DEVELOPER_PROMPT,
+    instructions=CODING_AGENT_INSTRUCTIONS,
     tools=[
         agent_tools.read_file,
         agent_tools.write_file,
@@ -552,10 +1198,11 @@ agent = Agent(
     )
 )
 
-# Run with full observability
-result = await agent.run("Create a blog app with posts and comments")
+# Validate input, run agent, check output
+user_input = "Create a blog app"
+validated = UserRequest(task=user_input)
 
-# Check the Logfire dashboard for traces
+result = await agent.run(validated.task)
 ```
 
 # Summary: Day 2

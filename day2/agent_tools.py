@@ -7,6 +7,11 @@ class AgentTools:
     """Tools for the coding agent to manipulate the project."""
 
     def __init__(self, project_path: Path):
+        """Initialize with the project path.
+
+        Args:
+            project_path: Root path of the Django project
+        """
         self.project_path = Path(project_path)
 
     def read_file(self, filepath: str) -> str:
@@ -44,7 +49,6 @@ class AgentTools:
         """
         work_dir = self.project_path / cwd if cwd else self.project_path
 
-        # Prevent running dev server in Jupyter
         if 'runserver' in command:
             return ("", "Error: Cannot run runserver in this environment", 1)
 
@@ -72,7 +76,6 @@ class AgentTools:
 
         for item in full_path.rglob("*"):
             if item.is_file():
-                # Skip __pycache__ and common ignore patterns
                 if '__pycache__' not in str(item):
                     files.append(str(item.relative_to(self.project_path)))
 
@@ -99,7 +102,7 @@ class AgentTools:
                         if pattern in line:
                             rel_path = str(file_path.relative_to(self.project_path))
                             matches.append((rel_path, line_num, line))
-                except:
-                    pass  # Skip binary files
+                except Exception:
+                    pass
 
         return matches
