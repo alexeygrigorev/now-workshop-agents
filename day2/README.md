@@ -517,6 +517,16 @@ The project is a Django 5.2.4 web application scaffolded with best practices:
 5. Keep server-side logic in views, minimal logic in templates
 6. Don't execute 'runserver' - use other commands to verify
 7. After changes, suggest how to test the application
+
+IMPORTANT: All Python commands MUST be executed via UV.
+- Use: `uv run python ...`
+- Never run: `python ...`, `pip ...`, or `python -m ...` directly.
+- If you need Django management commands, ALWAYS do: `uv run python manage.py <command>`
+Examples:
+- `uv run python manage.py migrate`
+- `uv run python manage.py makemigrations`
+- `uv run python manage.py test`
+- `uv run python manage.py check`
 """
 ```
 
