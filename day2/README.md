@@ -961,19 +961,68 @@ Drawbacks:
 
 ## Setting Up the Coordinator
 
-Define specialized agents:
+Define the specialized agents:
 
 ```python
 from pydantic_ai import Agent
+from pydantic import BaseModel
+```
+
+First, define structured output for the planner:
+
+```python
+class PlanStep(BaseModel):
+    name: str
+    detailed_description: str
+
+class Plan(BaseModel):
+    overview: str
+    steps: list[PlanStep]
+```
+
+Create the planner agent:
+
+```python
+PLANNER_INSTRUCTIONS = """
+You are a planning agent. Create a step-by-step plan for implementing Django features.
+
+Your output must be a structured Plan with:
+- overview: Brief description of what will be built
+- steps: List of concrete steps to implement
+
+Focus on clarity and modularity. Each step should be self-contained.
+"""
+
+planner = Agent(
+    'openai:gpt-4o-mini',
+    instructions=PLANNER_INSTRUCTIONS,
+    tools=[
+        agent_tools.see_file_tree,
+        agent_tools.read_file,
+        agent_tools.search_in_files
+    ]
+)
+```
+
+Create the researcher agent that reports findings in a structured way:
+
+```python
+class ResearchFindings(BaseModel):
+    summary: str
+    relevant_files: list[str]
+    existing_patterns: list[str]
+    recommendations: list[str]
 
 RESEARCHER_INSTRUCTIONS = """
-You are a code researcher. Your job is to:
-1. Explore the codebase structure
-2. Find relevant files and patterns
-3. Understand existing conventions
-4. Report your findings clearly
+You are a code researcher. Explore the codebase and provide structured findings.
 
-Use search and read_file tools extensively.
+Your output must include:
+- summary: What you found
+- relevant_files: Files that are relevant to the task
+- existing_patterns: Patterns or conventions used in the codebase
+- recommendations: Suggestions for implementation
+
+Use see_file_tree, read_file, and search_in_files tools.
 """
 
 researcher = Agent(
@@ -985,7 +1034,11 @@ researcher = Agent(
         agent_tools.search_in_files
     ]
 )
+```
 
+Create the writer (executor) agent:
+
+```python
 WRITER_INSTRUCTIONS = """
 You are a code writer. Your job is to:
 1. Create new files based on specifications
@@ -993,7 +1046,7 @@ You are a code writer. Your job is to:
 3. Use TailwindCSS for styling
 4. Follow Python and Django best practices
 
-Use write_file tool to create code.
+Use write_file and read_file tools. After making changes, provide a brief summary of what was done.
 """
 
 writer = Agent(
@@ -1001,27 +1054,67 @@ writer = Agent(
     instructions=WRITER_INSTRUCTIONS,
     tools=[
         agent_tools.write_file,
-        agent_tools.read_file
+        agent_tools.read_file,
+        agent_tools.execute_bash_command,
+        agent_tools.see_file_tree,
+        agent_tools.search_in_files
     ]
 )
 ```
 
-Create the coordinator with tools that call other agents:
+Create the validator agent:
+
+```python
+class ValidationReport(BaseModel):
+    status: str  # "pass", "fail", or "warning"
+    issues_found: list[str]
+    suggestions: list[str]
+
+VALIDATOR_INSTRUCTIONS = """
+You are a code validator. Review code for quality and correctness.
+
+Your output must include:
+- status: "pass" if code looks good, "fail" if there are critical issues, "warning" for minor issues
+- issues_found: List of any problems detected
+- suggestions: List of improvements
+
+Check for:
+- Django best practices
+- Security issues
+- Code quality
+- Missing tests
+"""
+
+validator = Agent(
+    'openai:gpt-4o-mini',
+    instructions=VALIDATOR_INSTRUCTIONS,
+    tools=[
+        agent_tools.read_file,
+        agent_tools.search_in_files
+    ]
+)
+```
+
+Now create the coordinator with tools that call each agent:
 
 ```python
 from pydantic_ai import RunContext
 
 COORDINATOR_INSTRUCTIONS = """
-You coordinate a team to build Django applications:
-- researcher: Explores the codebase and finds information
+You coordinate a team of agents to build Django applications:
+- planner: Creates a structured plan with steps
+- researcher: Explores the codebase and provides structured findings
 - writer: Writes and modifies code
+- validator: Reviews code for quality
 
-When given a task, decide which agent to use:
-- Use researcher when you need to explore or understand the codebase
-- Use writer when you need to create or modify files
+When given a task, decide which agents to call and in what order:
 
-You can call multiple agents in sequence if needed.
-Always use the available tools to call your team members.
+1. For new tasks, start with researcher to understand the codebase
+2. Then call planner to create a plan
+3. For each step in the plan, call writer to implement
+4. After implementation, call validator to check quality
+
+You can call agents multiple times if needed. Always use the available tools.
 """
 
 coordinator = Agent(
@@ -1030,26 +1123,43 @@ coordinator = Agent(
 )
 
 @coordinator.tool
-async def research(ctx: RunContext, query: str) -> str:
-    """Runs the researcher agent to explore the codebase."""
-    result = await researcher.run(user_prompt=query)
+async def plan(ctx: RunContext, task: str) -> str:
+    """Runs the planner agent to create a structured plan."""
+    result = await planner.run(user_prompt=task)
     return result.output
 
 @coordinator.tool
-async def write(ctx: RunContext, filepath: str, instruction: str) -> str:
-    """Runs the writer agent to create or modify files."""
-    prompt = f"Write to {filepath}: {instruction}"
-    result = await writer.run(user_prompt=prompt)
+async def research(ctx: RunContext, question: str) -> str:
+    """Runs the researcher agent to explore the codebase."""
+    result = await researcher.run(user_prompt=question)
+    return result.output
+
+@coordinator.tool
+async def write(ctx: RunContext, instruction: str) -> str:
+    """Runs the writer agent to create or modify code."""
+    result = await writer.run(user_prompt=instruction)
+    return result.output
+
+@coordinator.tool
+async def validate(ctx: RunContext, filepath: str) -> str:
+    """Runs the validator agent to check code quality."""
+    result = await validator.run(user_prompt=f"Review {filepath}")
     return result.output
 ```
 
 Run the coordinator:
 
 ```python
-result = await coordinator.run("Create a todo list app")
+result = await coordinator.run("Create a todo list app with add/delete functionality")
 
 print(result.output)
 ```
+
+The coordinator will:
+1. Call researcher to understand the current codebase
+2. Call planner to create a structured plan
+3. Call writer for each step in the plan
+4. Call validator to review the implementation
 
 ## Summary
 
@@ -1058,7 +1168,12 @@ The coordinator agent pattern is an alternative to fixed orchestration:
 - Fixed orchestration (Part 5): Python code controls the flow, tested and predictable
 - Coordinator agent (Part 6): LLM controls the flow, flexible but experimental
 
-Use the coordinator pattern when you need flexibility and can tolerate unpredictability. Use fixed orchestration when you need reliability and control.
+The coordinator pattern shines when:
+- Tasks vary widely in structure
+- You need adaptive workflows
+- You can tolerate some unpredictability
+
+Use fixed orchestration when you need reliability and control.
 
 Note: This pattern has not been extensively tested. It works technically but may be less reliable than the fixed orchestration approach.
 
