@@ -701,6 +701,33 @@ TOOL CALL: write_file({'filepath': 'myapp/models.py', 'content': '...'})
 ...
 ```
 
+## Chat-Bot Like Conversation
+
+This is how we implement it with Pydantic AI:
+
+```python
+message_history = []
+
+while True:
+    user_prompt = input('You:')
+    if user_prompt.lower().strip() == 'stop':
+        break
+
+    print(user_prompt)
+
+    result = await agent.run(
+        user_prompt=user_prompt,
+        message_history=message_history,
+        event_stream_handler=callback
+    )
+
+    print('ASSISTANT:')
+    print(result.output)
+    message_history.extend(result.new_messages())
+    
+    print()
+```
+
 ## Adding Monitoring with Logfire
 
 Install Logfire:
