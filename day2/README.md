@@ -1218,7 +1218,6 @@ When building agents, you need to ensure safety:
 - Block dangerous commands
 - Limit costs and token usage
 - Validate inputs and outputs
-- Moderate content for appropriateness
 
 ## Input Validation
 
@@ -1266,40 +1265,24 @@ if hasattr(result, 'data') and result.data:
 
 ## Cost Limits
 
-Limit the number of tool calls and tokens per run:
+Limit the number of requests and tokens per run:
 
 ```python
-from pydantic_ai import Agent, RunLimits
+from pydantic_ai import Agent, UsageLimits
 
 agent = Agent(
     'openai:gpt-4o-mini',
     instructions='You are a coding assistant.',
-    run_limits=RunLimits(
-        max_steps=20,  # Maximum tool calls
-        max_tokens=10000  # Maximum tokens per run
+)
+
+# UsageLimits are passed when running the agent
+result = await agent.run(
+    'Create a todo list',
+    usage_limits=UsageLimits(
+        request_limit=20,  # Maximum number of requests
+        total_tokens_limit=10000  # Maximum tokens per run
     )
 )
-```
-
-## Content Moderation
-
-Check if agent outputs are appropriate:
-
-```python
-from openai import OpenAI
-
-def moderate_content(text: str) -> bool:
-    """Check if content is safe."""
-    client = OpenAI()
-    response = client.moderations.create(input=text)
-    return not response.results[0].flagged
-
-# Check agent outputs
-result = await agent.run(task)
-if moderate_content(result.data):
-    print(result.data)
-else:
-    print("Content flagged as inappropriate")
 ```
 
 ## Complete Agent with Guardrails
@@ -1308,7 +1291,7 @@ Putting it all together:
 
 ```python
 from pathlib import Path
-from pydantic_ai import Agent, RunLimits
+from pydantic_ai import Agent, UsageLimits
 from agent_tools import AgentTools
 from pydantic import BaseModel, Field, field_validator
 
@@ -1327,7 +1310,7 @@ class UserRequest(BaseModel):
 # Initialize tools
 agent_tools = AgentTools(Path(project_name))
 
-# Create agent with limits
+# Create agent
 agent = Agent(
     'openai:gpt-4o-mini',
     instructions=CODING_AGENT_INSTRUCTIONS,
@@ -1337,18 +1320,20 @@ agent = Agent(
         agent_tools.execute_bash_command,
         agent_tools.see_file_tree,
         agent_tools.search_in_files
-    ],
-    run_limits=RunLimits(
-        max_steps=30,
-        max_tokens=20000
-    )
+    ]
 )
 
-# Validate input, run agent, check output
+# Validate input, run agent with limits, check output
 user_input = "Create a blog app"
 validated = UserRequest(task=user_input)
 
-result = await agent.run(validated.task)
+result = await agent.run(
+    validated.task,
+    usage_limits=UsageLimits(
+        request_limit=30,
+        total_tokens_limit=20000
+    )
+)
 ```
 
 # Summary: Day 2

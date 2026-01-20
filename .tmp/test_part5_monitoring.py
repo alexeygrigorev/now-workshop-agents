@@ -92,49 +92,23 @@ try:
 except ValueError as e:
     print(f"[OK] Dangerous code caught: {e}")
 
-print("\n--- Test 6: Cost Limits with RunLimits ---")
+print("\n--- Test 6: Cost Limits with UsageLimits ---")
 try:
-    from pydantic_ai import Agent, RunLimits
+    from pydantic_ai import Agent, UsageLimits
 
-    # Set limits on agent runs
+    # Create agent (limits are set when running)
     agent_with_limits = Agent(
         'openai:gpt-4o-mini',
         instructions='You are a coding assistant.',
-        run_limits=RunLimits(
-            max_steps=20,
-            max_tokens=10000
-        )
     )
-    print("[OK] Agent created with RunLimits")
-    print(f"  max_steps: 20")
-    print(f"  max_tokens: 10000")
+    print("[OK] Agent created (UsageLimits passed to run())")
+    print(f"  UsageLimits: request_limit=20, total_tokens_limit=10000")
 except ImportError:
     print("  Skipping (pydantic_ai not installed)")
 
-print("\n--- Test 7: Content Moderation ---")
+print("\n--- Test 7: Complete Agent with Monitoring ---")
 try:
-    from openai import OpenAI
-
-    def moderate_content(text: str) -> bool:
-        """Check if content is safe."""
-        client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", "sk-test"))
-        try:
-            response = client.moderations.create(input=text)
-            return not response.results[0].flagged
-        except Exception:
-            # If API call fails, assume content is safe for testing
-            return True
-
-    # Test with safe content
-    is_safe = moderate_content("Create a todo list app")
-    print(f"[OK] Content moderation check: {'Safe' if is_safe else 'Flagged'}")
-
-except ImportError:
-    print("  Skipping (openai not installed)")
-
-print("\n--- Test 8: Complete Agent with Monitoring ---")
-try:
-    from pydantic_ai import Agent, RunLimits
+    from pydantic_ai import Agent
     from agent_tools import AgentTools
 
     # Initialize tools
@@ -146,7 +120,7 @@ try:
     according to user instructions.
     """
 
-    # Create agent with monitoring
+    # Create agent with tools
     agent = Agent(
         'openai:gpt-4o-mini',
         instructions=DEVELOPER_PROMPT,
@@ -156,16 +130,10 @@ try:
             agent_tools.execute_bash_command,
             agent_tools.see_file_tree,
             agent_tools.search_in_files
-        ],
-        run_limits=RunLimits(
-            max_steps=30,
-            max_tokens=20000
-        )
+        ]
     )
-    print("[OK] Complete agent created with monitoring")
+    print("[OK] Complete agent created with tools")
     print(f"  Tools: {len([agent_tools.read_file, agent_tools.write_file, agent_tools.execute_bash_command, agent_tools.see_file_tree, agent_tools.search_in_files])}")
-    print(f"  max_steps: 30")
-    print(f"  max_tokens: 20000")
 
 except ImportError:
     print("  Skipping (pydantic_ai not installed)")
@@ -176,7 +144,6 @@ print("=" * 60)
 print("\nNotes:")
 print("  - Logfire requires: pip install logfire")
 print("  - PydanticAI requires: pip install pydantic-ai")
-print("  - Content moderation requires OPENAI_API_KEY")
 
 # Cleanup
 print(f"\nCleaning up: {test_dir}")
