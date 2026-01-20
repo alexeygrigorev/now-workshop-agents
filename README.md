@@ -21,3 +21,7 @@ Testing:
 
 - https://github.com/alexeygrigorev/my-daily-tasks-agent/blob/main/tests/judge.py
 - https://github.com/alexeygrigorev/my-daily-tasks-agent/blob/main/tests/test_judge.py
+
+Meetup:
+
+- https://www.meetup.com/berlin-datatalks-club/events/312876899/
