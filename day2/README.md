@@ -249,12 +249,15 @@ class AgentTools:
 Use this prompt with ChatGPT to add type hints, docstrings, and implement the methods:
 
 ```
-Please enhance this AgentTools class with type hints, docstrings, and simple implementations for file operations, bash execution, and search.
+Please enhance this AgentTools class with type hints, docstrings, and simple implementations
+for file operations, bash execution, and search.
 ```
 
-## Implementation
+If you see a lot files when looking at the tree, ask AI to exlude .venv and other files:
 
-See [agent_tools.py](agent_tools.py) for the complete implementation with type hints, docstrings, and full method implementations.
+```
+Exlude .git, .venv and other technical files and folders from see_file_tree and search_in_files
+```
 
 ## Testing the Tools
 
@@ -293,6 +296,11 @@ print("Searching for 'def home':")
 for path, line_num, line in matches:
     print(f"  {path}:{line_num} - {line.strip()}")
 ```
+
+## Implementation
+
+See [agent_tools.py](agent_tools.py) for the complete implementation with type hints, docstrings, and full method implementations.
+
 
 ## Copying the Template and Initializing Tools
 
