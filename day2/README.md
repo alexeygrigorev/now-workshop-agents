@@ -7,7 +7,6 @@ Learning Objectives:
  - Coordinate multiple agents
  - Add monitoring and guardrails with Pydantic Logfire
 
-Source: https://github.com/alexeygrigorev/workshops/blob/main/coding-agent/README.md
 
 ## Prerequisites
 
@@ -15,7 +14,6 @@ Source: https://github.com/alexeygrigorev/workshops/blob/main/coding-agent/READM
  - Django project template (provided)
  - All API keys configured
 
-Source: https://github.com/alexeygrigorev/workshops/blob/main/coding-agent/README.md
 
 ### Environment Setup
 
@@ -216,7 +214,6 @@ We organize tools into a class rather than standalone functions for several reas
 - Agent compatibility: AI agent frameworks expect tools as class methods that can be passed around
 - Easier integration: The entire `AgentTools` instance can be passed to an agent with all methods available
 
-Source: https://github.com/alexeygrigorev/workshops/blob/main/coding-agent/tools.py
 
 ## AgentTools Class Stub
 
@@ -540,7 +537,6 @@ make run
 
 # Part 4: PydanticAI and Monitoring
 
-Source: https://github.com/alexeygrigorev/ai-bootcamp
 
 We'll progress through two stages:
 1. Run agent with PydanticAI directly
@@ -737,7 +733,6 @@ We switched from ToyAIKit to PydanticAI and added monitoring:
 
 # Part 5: Multi-Agent Systems
 
-Source: https://github.com/alexeygrigorev/ai-bootcamp
 
 ## Why Multiple Agents?
 
@@ -936,11 +931,9 @@ You can extend the multi-agent pattern in several ways:
 
 These are ideas for extending the pattern. The core planner-executor pattern described above has been tested and works well. Adding more complexity should be done carefully as it increases costs and makes the system harder to debug.
 
-Source: https://github.com/alexeygrigorev/ai-bootcamp/blob/main/05-use-cases/01-coding-agent/06-multiple-agents.md
 
 # Part 6: Coordinator Agent Pattern
 
-Source: https://github.com/alexeygrigorev/ai-bootcamp
 
 In Part 5, we used Python code to orchestrate agents in a fixed sequence. Another approach is to let a coordinator agent decide which agents to call and when.
 
@@ -1036,22 +1029,24 @@ researcher = Agent(
 )
 ```
 
-Create the writer (executor) agent:
+Create the executor agent:
 
 ```python
-WRITER_INSTRUCTIONS = """
-You are a code writer. Your job is to:
+EXECUTOR_INSTRUCTIONS = """
+You are a code executor. Your job is to:
 1. Create new files based on specifications
 2. Modify existing files following Django patterns
-3. Use TailwindCSS for styling
-4. Follow Python and Django best practices
+3. Execute bash commands for testing and validation
+4. Use TailwindCSS for styling
+5. Follow Python and Django best practices
 
-Use write_file and read_file tools. After making changes, provide a brief summary of what was done.
+Use all available tools (write_file, read_file, execute_bash_command, etc).
+After making changes, provide a brief summary of what was done.
 """
 
-writer = Agent(
+executor = Agent(
     'openai:gpt-4o-mini',
-    instructions=WRITER_INSTRUCTIONS,
+    instructions=EXECUTOR_INSTRUCTIONS,
     tools=[
         agent_tools.write_file,
         agent_tools.read_file,
@@ -1104,14 +1099,14 @@ COORDINATOR_INSTRUCTIONS = """
 You coordinate a team of agents to build Django applications:
 - planner: Creates a structured plan with steps
 - researcher: Explores the codebase and provides structured findings
-- writer: Writes and modifies code
+- executor: Executes the plan (reads, writes, runs commands)
 - validator: Reviews code for quality
 
 When given a task, decide which agents to call and in what order:
 
 1. For new tasks, start with researcher to understand the codebase
 2. Then call planner to create a plan
-3. For each step in the plan, call writer to implement
+3. For each step in the plan, call executor to implement
 4. After implementation, call validator to check quality
 
 You can call agents multiple times if needed. Always use the available tools.
@@ -1135,9 +1130,9 @@ async def research(ctx: RunContext, question: str) -> str:
     return result.output
 
 @coordinator.tool
-async def write(ctx: RunContext, instruction: str) -> str:
-    """Runs the writer agent to create or modify code."""
-    result = await writer.run(user_prompt=instruction)
+async def execute(ctx: RunContext, instruction: str) -> str:
+    """Runs the executor agent to implement code changes."""
+    result = await executor.run(user_prompt=instruction)
     return result.output
 
 @coordinator.tool
@@ -1175,7 +1170,7 @@ coordinator (decides what to do)
 │     - overview: brief description                       │
 │     - steps: list of PlanStep (name, description)      │
 ├─────────────────────────────────────────────────────────┤
-│  3. writer → implements code                             │
+│  3. executor → implements code                           │
 │     Uses Plan steps and ResearchFindings as context     │
 ├─────────────────────────────────────────────────────────┤
 │  4. validator → ValidationReport                         │
@@ -1194,7 +1189,7 @@ Using Pydantic models for agent output is crucial for multi-agent systems:
 - Composability: Agents can consume other agents' output reliably
 - Debugging: Structured data is easier to inspect than free text
 
-For example, the researcher produces `ResearchFindings` with `relevant_files`. The planner can use this list to focus on the right files. The writer receives both the plan AND the research findings, giving it full context.
+For example, the researcher produces `ResearchFindings` with `relevant_files`. The planner can use this list to focus on the right files. The executor receives both the plan AND the research findings, giving it full context.
 
 ## Summary
 
@@ -1216,7 +1211,6 @@ Note: This pattern has not been extensively tested. It works technically but may
 
 # Part 7: Guardrails
 
-Source: https://ai.pydantic.dev
 
 ## Why Guardrails Matter
 

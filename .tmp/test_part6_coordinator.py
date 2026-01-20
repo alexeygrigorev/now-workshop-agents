@@ -116,20 +116,22 @@ researcher = Agent(
 )
 print("[OK] Researcher agent created")
 
-print("\n--- Test 6: Create writer agent ---")
-WRITER_INSTRUCTIONS = """
-You are a code writer. Your job is to:
+print("\n--- Test 6: Create executor agent ---")
+EXECUTOR_INSTRUCTIONS = """
+You are a code executor. Your job is to:
 1. Create new files based on specifications
 2. Modify existing files following Django patterns
-3. Use TailwindCSS for styling
-4. Follow Python and Django best practices
+3. Execute bash commands for testing and validation
+4. Use TailwindCSS for styling
+5. Follow Python and Django best practices
 
-Use write_file and read_file tools. After making changes, provide a brief summary.
+Use all available tools (write_file, read_file, execute_bash_command, etc).
+After making changes, provide a brief summary.
 """
 
-writer = Agent(
+executor = Agent(
     'openai:gpt-4o-mini',
-    instructions=WRITER_INSTRUCTIONS,
+    instructions=EXECUTOR_INSTRUCTIONS,
     tools=[
         agent_tools.write_file,
         agent_tools.read_file,
@@ -138,7 +140,7 @@ writer = Agent(
         agent_tools.search_in_files
     ]
 )
-print("[OK] Writer agent created")
+print("[OK] Executor agent created")
 
 print("\n--- Test 7: Create validator agent ---")
 VALIDATOR_INSTRUCTIONS = """
@@ -171,14 +173,14 @@ COORDINATOR_INSTRUCTIONS = """
 You coordinate a team of agents to build Django applications:
 - planner: Creates a structured plan with steps
 - researcher: Explores the codebase and provides structured findings
-- writer: Writes and modifies code
+- executor: Executes the plan (reads, writes, runs commands)
 - validator: Reviews code for quality
 
 When given a task, decide which agents to call and in what order:
 
 1. For new tasks, start with researcher to understand the codebase
 2. Then call planner to create a plan
-3. For each step in the plan, call writer to implement
+3. For each step in the plan, call executor to implement
 4. After implementation, call validator to check quality
 
 You can call agents multiple times if needed. Always use the available tools.
@@ -205,9 +207,9 @@ async def research(ctx: RunContext, question: str) -> str:
     return result.output
 
 @coordinator.tool
-async def write(ctx: RunContext, instruction: str) -> str:
-    """Runs the writer agent to create or modify code."""
-    result = await writer.run(user_prompt=instruction)
+async def execute(ctx: RunContext, instruction: str) -> str:
+    """Runs the executor agent to implement code changes."""
+    result = await executor.run(user_prompt=instruction)
     return result.output
 
 @coordinator.tool
@@ -219,7 +221,7 @@ async def validate(ctx: RunContext, filepath: str) -> str:
 print("[OK] Coordinator tools registered:")
 print("  - plan (calls planner agent)")
 print("  - research (calls researcher agent)")
-print("  - write (calls writer agent)")
+print("  - execute (calls executor agent)")
 print("  - validate (calls validator agent)")
 
 print("\n" + "=" * 60)
@@ -228,7 +230,7 @@ print("=" * 60)
 print("\nAgent setup:")
 print("  1. planner -> creates structured Plan (PlanStep[], overview)")
 print("  2. researcher -> provides ResearchFindings (structured output)")
-print("  3. writer -> reads and writes code")
+print("  3. executor -> reads and writes code")
 print("  4. validator -> provides ValidationReport (status, issues, suggestions)")
 print("\nComparison of approaches:")
 print("  Part 5 (Fixed orchestration): Python controls flow - TESTED")
