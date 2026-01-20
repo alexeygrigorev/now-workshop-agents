@@ -16,3 +16,8 @@ Contact information:
 - LinkedIn: https://www.linkedin.com/in/agrigorev
 - Email: alexey@datatalks.club
 - DataTalks.Club slack: https://datatalks.club/
+
+Testing:
+
+- https://github.com/alexeygrigorev/my-daily-tasks-agent/blob/main/tests/judge.py
+- https://github.com/alexeygrigorev/my-daily-tasks-agent/blob/main/tests/test_judge.py
