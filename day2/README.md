@@ -246,12 +246,15 @@ class AgentTools:
 Use this prompt with ChatGPT to add type hints, docstrings, and implement the methods:
 
 ```
-Please enhance this AgentTools class with type hints, docstrings, and simple implementations for file operations, bash execution, and search.
+Please enhance this AgentTools class with type hints, docstrings, and simple implementations
+for file operations, bash execution, and search.
 ```
 
-## Implementation
+If you see a lot files when looking at the tree, ask AI to exlude .venv and other files:
 
-See [agent_tools.py](agent_tools.py) for the complete implementation with type hints, docstrings, and full method implementations.
+```
+Exlude .git, .venv and other technical files and folders from see_file_tree and search_in_files
+```
 
 ## Testing the Tools
 
@@ -290,6 +293,11 @@ print("Searching for 'def home':")
 for path, line_num, line in matches:
     print(f"  {path}:{line_num} - {line.strip()}")
 ```
+
+## Implementation
+
+See [agent_tools.py](agent_tools.py) for the complete implementation with type hints, docstrings, and full method implementations.
+
 
 ## Copying the Template and Initializing Tools
 
@@ -506,6 +514,16 @@ The project is a Django 5.2.4 web application scaffolded with best practices:
 5. Keep server-side logic in views, minimal logic in templates
 6. Don't execute 'runserver' - use other commands to verify
 7. After changes, suggest how to test the application
+
+IMPORTANT: All Python commands MUST be executed via UV.
+- Use: `uv run python ...`
+- Never run: `python ...`, `pip ...`, or `python -m ...` directly.
+- If you need Django management commands, ALWAYS do: `uv run python manage.py <command>`
+Examples:
+- `uv run python manage.py migrate`
+- `uv run python manage.py makemigrations`
+- `uv run python manage.py test`
+- `uv run python manage.py check`
 """
 ```
 
@@ -677,6 +695,33 @@ TOOL CALL: see_file_tree({'root_dir': '.'})
 TOOL CALL: read_file({'filepath': 'myapp/models.py'})
 TOOL CALL: write_file({'filepath': 'myapp/models.py', 'content': '...'})
 ...
+```
+
+## Chat-Bot Like Conversation
+
+This is how we implement it with Pydantic AI:
+
+```python
+message_history = []
+
+while True:
+    user_prompt = input('You:')
+    if user_prompt.lower().strip() == 'stop':
+        break
+
+    print(user_prompt)
+
+    result = await agent.run(
+        user_prompt=user_prompt,
+        message_history=message_history,
+        event_stream_handler=callback
+    )
+
+    print('ASSISTANT:')
+    print(result.output)
+    message_history.extend(result.new_messages())
+    
+    print()
 ```
 
 ## Adding Monitoring with Logfire
