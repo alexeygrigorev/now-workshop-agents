@@ -265,13 +265,13 @@ from pathlib import Path
 from agent_tools import AgentTools
 
 project_path = Path("django_template")
-tools = AgentTools(project_path)
+agent_tools = AgentTools(project_path)
 ```
 
 List all files in the project:
 
 ```python
-files = tools.see_file_tree()
+files = agent_tools.see_file_tree()
 print("Files in project:")
 for f in files[:10]:
     print(f"  {f}")
@@ -280,7 +280,7 @@ for f in files[:10]:
 Read a specific file:
 
 ```python
-views_content = tools.read_file("myapp/views.py")
+views_content = agent_tools.read_file("myapp/views.py")
 print("Views.py content:")
 print(views_content)
 ```
@@ -288,7 +288,7 @@ print(views_content)
 Search for a pattern across files:
 
 ```python
-matches = tools.search_in_files("def home")
+matches = agent_tools.search_in_files("def home")
 print("Searching for 'def home':")
 for path, line_num, line in matches:
     print(f"  {path}:{line_num} - {line.strip()}")
@@ -330,10 +330,10 @@ from pathlib import Path
 from agent_tools import AgentTools
 
 project_path = Path(project_name)
-tools = AgentTools(project_path)
+agent_tools = AgentTools(project_path)
 
 # Verify tools are working
-files = tools.see_file_tree()
+files = agent_tools.see_file_tree()
 print(f"Found {len(files)} files in project")
 ```
 
@@ -470,6 +470,7 @@ Please expand this Django coding agent prompt to include:
 - Instructions for using Font-Awesome icons
 - How to handle models, views, URLs, and templates
 - Testing and verification steps
+- Running it with uv
 ```
 
 This will give you a comprehensive prompt:
@@ -576,9 +577,7 @@ Now let's do the same with PydanticAI instead of ToyAIKit.
 Import what you need:
 
 ```python
-from pathlib import Path
 from pydantic_ai import Agent
-from agent_tools import AgentTools
 
 agent_tools = AgentTools(Path(project_name))
 ```
@@ -625,6 +624,16 @@ The project is a Django 5.2.4 web application scaffolded with best practices:
 5. Keep server-side logic in views, minimal logic in templates
 6. Don't execute 'runserver' - use other commands to verify
 7. After changes, suggest how to test the application
+
+IMPORTANT: All Python commands MUST be executed via UV.
+- Use: `uv run python ...`
+- Never run: `python ...`, `pip ...`, or `python -m ...` directly.
+- If you need Django management commands, ALWAYS do: `uv run python manage.py <command>`
+Examples:
+- `uv run python manage.py migrate`
+- `uv run python manage.py makemigrations`
+- `uv run python manage.py test`
+- `uv run python manage.py check`
 """
 ```
 
@@ -708,8 +717,6 @@ while True:
     user_prompt = input('You:')
     if user_prompt.lower().strip() == 'stop':
         break
-
-    print(user_prompt)
 
     result = await agent.run(
         user_prompt=user_prompt,
@@ -815,6 +822,17 @@ Execution flow:
 5. done
 ```
 
+## Model Choice
+
+For multi-agent systems, we use GPT-5-mini instead of GPT-4o-mini:
+
+- More powerful: GPT-5-mini is a reasoning model that produces better quality output
+- Slower: The reasoning process takes longer than simpler models
+- More expensive: Higher cost per token, but better results may require fewer iterations
+- Cost tracking: With ToyAIKit, use `result.cost` to track expenses. With PydanticAI + Logfire, view costs in the Logfire dashboard.
+
+For experimentation and learning, GPT-4o-mini is cheaper and faster. For production-quality code, GPT-5-mini's reasoning capabilities often produce better results with fewer errors.
+
 ## Structured Output Models
 
 Define Pydantic models for each agent's output:
@@ -858,19 +876,46 @@ so don't ask questions about interface.
 """
 
 clarifier = Agent(
-    'openai:gpt-4o-mini',
+    'openai:gpt-5-mini',
     instructions=CLARIFIER_INSTRUCTIONS
 )
 ```
 
-The clarifier runs interactively until it outputs "READY":
+The clarifier runs interactively until it outputs "READY". There are two approaches to handle this:
+
+**Simple approach**: Run the clarifier once and capture the full Q&A conversation. PydanticAI handles the interactive loop internally:
 
 ```python
 result = await clarifier.run("Create a todo list app")
 
 # Build Q&A prompt for the next agent
-qa_prompt = result.output  # Contains the full conversation
+qa_prompt = result.output  # Contains the full conversation with "READY" at the end
 ```
+
+**Loop approach**: If you need more control, you can manage the conversation state manually:
+
+```python
+message_history = []
+user_input = "Create a todo list app"
+
+while True:
+    result = await clarifier.run(user_input, message=message_history)
+    message_history.extend(result.new_messages())
+
+    output = result.output
+    if "READY" in output:
+        break
+
+    # Get user response to the clarifier's question
+    user_input = input("Your answer: ")
+
+# The full conversation is now in message_history
+qa_prompt = "\n".join([str(msg) for msg in message_history])
+```
+
+For most use cases, the simple approach works. PydanticAI handles the conversation internally.
+
+Note: For cost tracking with PydanticAI, use Logfire. The `result.cost` attribute is not available in PydanticAI - instead, view costs in the Logfire dashboard.
 
 ## Namer Agent
 
@@ -890,13 +935,26 @@ Be original. Also be unpredictable.
 """
 
 namer = Agent(
-    'openai:gpt-4o-mini',
+    'openai:gpt-5-mini',
     instructions=NAMER_INSTRUCTIONS
 )
 
 # Run with structured output
-result = await namer.run(qa_prompt)
+result = await namer.run(qa_prompt, output_type=ProjectName)
 project_name = result.output  # ProjectName(name="...", slug="...")
+
+# Copy the template to the new project location
+import shutil
+from pathlib import Path
+
+template_path = Path("django_template")
+new_project_path = Path(project_name.slug)
+
+shutil.copytree(template_path, new_project_path)
+print(f"Created project at: {new_project_path}")
+
+# Re-initialize agent tools with the new project path
+agent_tools = AgentTools(new_project_path)
 ```
 
 ## Planner Agent
@@ -935,7 +993,7 @@ The coding agent will see only one step at a time, so make steps self-contained.
 """
 
 planner = Agent(
-    'openai:gpt-4o-mini',
+    'openai:gpt-5-mini',
     instructions=PLANNER_INSTRUCTIONS,
     tools=[
         agent_tools.see_file_tree,
@@ -945,7 +1003,7 @@ planner = Agent(
 )
 
 # Run with structured output
-result = await planner.run(qa_prompt)
+result = await planner.run(qa_prompt, output_type=Plan)
 plan = result.output  # Plan(overview="...", steps=[PlanStep(...), ...])
 ```
 
@@ -986,11 +1044,20 @@ Key technologies and constraints:
 - You can create, edit, or delete any files as needed to complete your task
 - Read relevant files before making edits to make sure your work is correct
 
+All Python commands MUST be executed via UV:
+- Use: `uv run python ...`
+- Never run: `python ...`, `pip ...`, or `python -m ...` directly
+- Django management commands: `uv run python manage.py <command>`
+Examples:
+- `uv run python manage.py migrate`
+- `uv run python manage.py makemigrations`
+- `uv run python manage.py test`
+
 Act with precision. Implement the plan.
 """
 
 executor = Agent(
-    'openai:gpt-4o-mini',
+    'openai:gpt-5-mini',
     instructions=EXECUTOR_INSTRUCTIONS,
     tools=[
         agent_tools.read_file,
@@ -1000,36 +1067,15 @@ executor = Agent(
         agent_tools.search_in_files
     ]
 )
-```
 
-## Executing the Plan
-
-First, get the structured outputs from each agent:
-
-```python
-# 1. Clarifier gathers requirements
-clarifier_result = await clarifier.run("Create a todo list app")
-qa_prompt = clarifier_result.output
-
-# 2. Namer generates project name and slug
-namer_result = await namer.run(qa_prompt)
-project_name: ProjectName = namer_result.output
-
-# 3. Planner creates structured plan
-planner_result = await planner.run(qa_prompt)
-plan: Plan = planner_result.output
-```
-
-Then execute each step sequentially:
-
-```python
+# Execute each step from the plan
 for i, step in enumerate(plan.steps):
     print(f"Step {i+1}/{len(plan.steps)}: {step.name}")
 
     prompt = f"""
 Project overview: {plan.overview}
 
-Current step - step #{i+1}:
+Current step - step #{i}:
 
 {step.name}
 
@@ -1252,13 +1298,13 @@ coordinator = Agent(
 @coordinator.tool
 async def plan(ctx: RunContext, task: str) -> str:
     """Runs the planner agent to create a structured plan."""
-    result = await planner.run(user_prompt=task)
+    result = await planner.run(user_prompt=task, output_type=Plan)
     return result.output
 
 @coordinator.tool
 async def research(ctx: RunContext, question: str) -> str:
     """Runs the researcher agent to explore the codebase."""
-    result = await researcher.run(user_prompt=question)
+    result = await researcher.run(user_prompt=question, output_type=ResearchFindings)
     return result.output
 
 @coordinator.tool
@@ -1270,7 +1316,7 @@ async def execute(ctx: RunContext, instruction: str) -> str:
 @coordinator.tool
 async def validate(ctx: RunContext, filepath: str) -> str:
     """Runs the validator agent to check code quality."""
-    result = await validator.run(user_prompt=f"Review {filepath}")
+    result = await validator.run(user_prompt=f"Review {filepath}", output_type=ValidationReport)
     return result.output
 ```
 
@@ -1281,6 +1327,48 @@ result = await coordinator.run("Create a todo list app with add/delete functiona
 
 print(result.output)
 ```
+
+## Monitoring with Callbacks
+
+To see which agent is making tool calls, create a named callback class:
+
+```python
+from pydantic_ai.messages import FunctionToolCallEvent
+
+class NamedCallback:
+    """Callback that shows which agent makes each tool call."""
+
+    def __init__(self, agent_name: str):
+        self.agent_name = agent_name
+
+    async def print_function_calls(self, ctx, event):
+        # Handle nested async streams
+        if hasattr(event, "__aiter__"):
+            async for sub in event:
+                await self.print_function_calls(ctx, sub)
+            return
+
+        if isinstance(event, FunctionToolCallEvent):
+            tool_name = event.part.tool_name
+            args = event.part.args
+            print(f"[{self.agent_name}] TOOL CALL: {tool_name}({args})")
+
+    async def __call__(self, ctx, event):
+        return await self.print_function_calls(ctx, event)
+```
+
+Use the callback when running any agent:
+
+```python
+callback = NamedCallback("coordinator")
+
+result = await coordinator.run(
+    "Create a todo list app",
+    event_stream_handler=callback
+)
+```
+
+Now you can see exactly which tools each agent uses, prefixed with the agent name.
 
 ## How It Works
 
@@ -1312,17 +1400,6 @@ coordinator (decides what to do)
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Why Structured Output?
-
-Using Pydantic models for agent output is crucial for multi-agent systems:
-
-- Predictable shape: Each agent knows exactly what format to expect
-- Type safety: Pydantic validates the output structure
-- Composability: Agents can consume other agents' output reliably
-- Debugging: Structured data is easier to inspect than free text
-
-For example, the researcher produces `ResearchFindings` with `relevant_files`. The planner can use this list to focus on the right files. The executor receives both the plan AND the research findings, giving it full context.
-
 ## Summary
 
 The coordinator agent pattern is an alternative to fixed orchestration:
@@ -1341,133 +1418,6 @@ Use fixed orchestration when you need reliability and control.
 
 Note: This pattern has not been extensively tested. It works technically but may be less reliable than the fixed orchestration approach.
 
-# Part 7: Guardrails
-
-
-## Why Guardrails Matter
-
-When building agents, you need to ensure safety:
-- Block dangerous commands
-- Limit costs and token usage
-- Validate inputs and outputs
-
-## Input Validation
-
-Validate user input before passing it to the agent:
-
-```python
-from pydantic import BaseModel, Field, field_validator
-
-class UserRequest(BaseModel):
-    """Validate user requests to the agent."""
-    task: str = Field(..., min_length=5, max_length=1000)
-
-    @field_validator('task')
-    @classmethod
-    def forbid_dangerous_commands(cls, v):
-        dangerous = ['rm -rf', 'format', 'delete all', 'drop table']
-        if any(cmd in v.lower() for cmd in dangerous):
-            raise ValueError('Potentially dangerous command detected')
-        return v
-
-# Use before running agent
-request = UserRequest(task=user_input)
-```
-
-## Output Sanitization
-
-Check generated code for harmful patterns:
-
-```python
-def sanitize_code_output(code: str) -> str:
-    """Remove potentially harmful patterns from generated code."""
-    dangerous_imports = ['os.system', 'subprocess.call', 'eval', 'exec']
-
-    for imp in dangerous_imports:
-        if imp in code:
-            raise ValueError(f"Potentially dangerous code: {imp}")
-
-    return code
-
-# Apply to agent output
-result = await agent.run(task)
-if hasattr(result, 'data') and result.data:
-    sanitize_code_output(result.data)
-```
-
-## Cost Limits
-
-Limit the number of requests and tokens per run:
-
-```python
-from pydantic_ai import Agent, UsageLimits
-
-agent = Agent(
-    'openai:gpt-4o-mini',
-    instructions='You are a coding assistant.',
-)
-
-# UsageLimits are passed when running the agent
-result = await agent.run(
-    'Create a todo list',
-    usage_limits=UsageLimits(
-        request_limit=20,  # Maximum number of requests
-        total_tokens_limit=10000  # Maximum tokens per run
-    )
-)
-```
-
-## Complete Agent with Guardrails
-
-Putting it all together:
-
-```python
-from pathlib import Path
-from pydantic_ai import Agent, UsageLimits
-from agent_tools import AgentTools
-from pydantic import BaseModel, Field, field_validator
-
-class UserRequest(BaseModel):
-    """Validate user requests to the agent."""
-    task: str = Field(..., min_length=5, max_length=1000)
-
-    @field_validator('task')
-    @classmethod
-    def forbid_dangerous_commands(cls, v):
-        dangerous = ['rm -rf', 'format', 'delete all', 'drop table']
-        if any(cmd in v.lower() for cmd in dangerous):
-            raise ValueError('Potentially dangerous command detected')
-        return v
-
-# Initialize tools
-agent_tools = AgentTools(Path(project_name))
-
-# Create agent
-agent = Agent(
-    'openai:gpt-4o-mini',
-    instructions=CODING_AGENT_INSTRUCTIONS,
-    tools=[
-        agent_tools.read_file,
-        agent_tools.write_file,
-        agent_tools.execute_bash_command,
-        agent_tools.see_file_tree,
-        agent_tools.search_in_files
-    ]
-)
-
-# Validate input, run agent with limits, check output
-user_input = "Create a blog app"
-validated = UserRequest(task=user_input)
-
-result = await agent.run(
-    validated.task,
-    usage_limits=UsageLimits(
-        request_limit=30,
-        total_tokens_limit=20000
-    )
-)
-```
-
 # Summary: Day 2
 
 Today we built a complete coding agent:
@@ -1477,7 +1427,6 @@ Today we built a complete coding agent:
 3. Single Agent: Built a coding agent with ToyAIKit
 4. Multi-Agent: Coordinated specialized agents with PydanticAI
 5. Monitoring: Added observability with Logfire
-6. Guardrails: Implemented safety measures
 
 ## Key Takeaways
 
@@ -1485,13 +1434,11 @@ Today we built a complete coding agent:
  - File manipulation tools enable coding agents
  - Multi-agent systems handle complexity through specialization
  - Monitoring is essential for production agents
- - Guardrails protect against dangerous operations
 
 ## Next Steps
 
  - Try building different types of applications
  - Add more specialized agents (testing, documentation, etc.)
- - Implement more sophisticated guardrails
  - Explore MCP for external tool integration
  - Deploy your agent as a service
 
